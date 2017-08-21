@@ -15,6 +15,8 @@
     - { role: php, tags: [php] }
     - { role: xdebug, tags: [php, xdebug] }
     - { role: memcached, tags: [memcached] }
+    # nginx build
+    - { role: nginx-build, tags: [nginx], when: nginx_install_type == 'source' }
     - { role: nginx, tags: [nginx] }
     - { role: logrotate, tags: [logrotate] }
     - { role: composer, tags: [composer] }
