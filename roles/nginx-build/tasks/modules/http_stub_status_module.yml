@@ -1,5 +1,3 @@
-# file: nginx-build/tasks/modules/http_stub_status_module.yml
-
 - include: _authorized_ips.yml
 
 - name: Nginx Modules - Make sure the nginx status configuration is updated

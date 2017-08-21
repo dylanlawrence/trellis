@@ -1,5 +1,6 @@
 ---
 - include: directories.yml
+
 - name: Nginx - Install build requirements
   become: yes
   apt: name={{ item }} update_cache=yes
@@ -21,16 +22,9 @@
   command: tar -xvzf {{ nginx_build_tmp_dir }}/nginx-{{nginx_source_version}}.tar.gz
            chdir={{ nginx_build_tmp_dir }} creates={{ nginx_build_tmp_dir }}/nginx-{{nginx_source_version}}/README
 
-- name: Nginx - Setup flags compiled
-  template:
-    src: .nginx_compilation_flags.j2
-    dest: "{{ nginx_build_tmp_dir }}/.nginx_compilation_flags"
-  register: nginx_flags
-
 - name: Nginx - kill nginx
   command: pkill nginx
   ignore_errors: yes
-  when: nginx_flags.changed
 
 - name: Nginx - Make Nginx source (Grab lunch . . .)
   shell: >
@@ -38,11 +32,10 @@
     ./configure {{nginx_source_flags}} &&
     make &&
     sudo make install
-  when: nginx_flags.changed
 
 - name: Nginx - Update the sym link
   file:
-    path: {{ nginx_bin }}
+    path: "{{ nginx_bin }}"
     src: "{{ nginx_source_sbin_path }}"
     state: link
     force: yes
@@ -68,4 +61,3 @@
     name: nginx
     enabled: yes
   notify: restart_nginx
-
