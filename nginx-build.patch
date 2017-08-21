@@ -1,0 +1,924 @@
+diff --git a/.gitignore b/.gitignore
+index fd2a86f..dc67e06 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -3,3 +3,15 @@
+ vendor/roles
+ *.py[co]
+ *.retry
++
++
++# IntelliJ project files
++*.idea
++/.idea
++*.iml
++out
++gen
++
++# Folder view configuration files
++.DS_Store
++Desktop.ini
+\ No newline at end of file
+diff --git a/dev.yml b/dev.yml
+index 156e7fe..a7ab16e 100644
+--- a/dev.yml
++++ b/dev.yml
+@@ -15,6 +15,8 @@
+     - { role: php, tags: [php] }
+     - { role: xdebug, tags: [php, xdebug] }
+     - { role: memcached, tags: [memcached] }
++    # nginx build
++    - { role: nginx-build, tags: [nginx], when: nginx_install_type == 'source' }
+     - { role: nginx, tags: [nginx] }
+     - { role: logrotate, tags: [logrotate] }
+     - { role: composer, tags: [composer] }
+diff --git a/group_vars/all/main.yml b/group_vars/all/main.yml
+index bcc0f88..efdd311 100644
+--- a/group_vars/all/main.yml
++++ b/group_vars/all/main.yml
+@@ -18,3 +18,6 @@ raw_vars:
+   - vault_users.*.password
+   - vault_users.*.salt
+   - vault_wordpress_sites
++
++# package or source
++nginx_install_type: source
+diff --git a/roles/nginx-build/defaults/main.yml b/roles/nginx-build/defaults/main.yml
+new file mode 100644
+index 0000000..745e73e
+--- /dev/null
++++ b/roles/nginx-build/defaults/main.yml
+@@ -0,0 +1,97 @@
++---
++#
++nginx_build_tmp_dir : "/tmp/nginx-build"
++#
++nginx_source_version: "1.13.0"
++
++nginx_user: www-data
++nginx_group: www-data
++nginx_uid: 33
++nginx_gid: 33
++
++nginx_dir: "/etc/nginx"
++nginx_www_dir: "/srv/www"
++nginx_log_dir: "/var/log/nginx"
++nginx_pid: "/var/run/nginx.pid"
++nginx_bin: "/usr/sbin/nginx"
++
++# source
++nginx_source_url: "http://nginx.org/download/nginx-{{nginx_source_version}}.tar.gz"
++nginx_source_prefix: "/usr/local/nginx/nginx-{{nginx_source_version}}"
++nginx_source_conf_path: "{{nginx_dir}}/nginx.conf"
++nginx_source_sbin_path: "{{nginx_source_prefix}}/sbin/nginx"
++nginx_source_default_flags: "--prefix={{nginx_source_prefix}} --conf-path={{nginx_source_conf_path}} --sbin-path={{nginx_source_sbin_path}}"
++
++nginx_modules:
++  http_stub_status_module: "--with-http_stub_status_module"
++  http_ssl_module: "--with-http_ssl_module"
++  openssl: "--with-openssl={{ nginx_build_tmp_dir }}/openssl-{{ openssl_version }}"
++  http_v2_module: "--with-http_v2_module"
++  http_gzip_static_module: "--with-http_gzip_static_module"
++  upload_progress_module: "--add-module={{ nginx_build_tmp_dir }}/nginx-upload-progress-module-{{nginx_upload_progress_version}}"
++  ipv6_module: "--with-ipv6"
++  google_perftools_module: "--with-google_perftools_module"
++  http_auth_request_module: "--with-http_auth_request_module"
++  headers_more_module: "--add-module={{ nginx_build_tmp_dir }}/headers-more-nginx-module-{{nginx_headers_more_version}}"
++  http_echo_module: "--add-module={{ nginx_build_tmp_dir }}/echo-nginx-module-{{nginx_echo_version}}"
++  http_real_ip_module: "--with-http_realip_module"
++  naxsi_module: "--add-module={{ nginx_build_tmp_dir }}/naxsi-{{nginx_naxsi_version}}/naxsi_src"
++  ngx_pagespeed: "--add-module={{ nginx_build_tmp_dir }}/ngx_pagespeed-{{nginx_ngx_pagespeed_version}}"
++  http_geoip_module: "--with-http_geoip_module"
++
++nginx_modules_excluded:
++  - mail_pop3_module
++  - mail_imap_module
++  - mail_smtp_module
++
++# ./configure this
++nginx_source_flags: "{{nginx_source_default_flags}}{% for key, value in nginx_modules.items() %} {{value}}{% endfor %}{% for item in nginx_modules_excluded %} --without-{{item}}{% endfor %}"
++
++
++##### Modules ######
++####################
++
++# geoip_module
++nginx_geoip: 'off'
++nginx_geoip_country: "{{nginx_dir}}/geoip/GeoIP.dat"
++nginx_geoip_city: "{{nginx_dir}}/geoip/GeoLiteCity.dat"
++
++# http_stub_status_module
++nginx_remote_ip_var: "remote_addr"
++nginx_authorized_ips:
++  - "127.0.0.1/32"
++
++# http_gzip_static_module
++nginx_gzip_static: "off"
++
++# upload_progress_module
++nginx_upload_progress_version: 0.9.2
++nginx_upload_progress_javascript_output: yes
++nginx_upload_progress_zone_name: "proxied"
++nginx_upload_progress_zone_size: "1m"
++nginx_upload_progress_url: "https://github.com/masterzen/nginx-upload-progress-module/archive/v{{nginx_upload_progress_version}}.tar.gz"
++
++# headers_more_module
++nginx_headers_more_version: 0.32
++nginx_headers_more_url: "https://github.com/openresty/headers-more-nginx-module/archive/v{{nginx_headers_more_version}}.tar.gz"
++
++# http_echo_module
++nginx_echo_version: 0.61
++nginx_echo_url: "https://github.com/openresty/echo-nginx-module/archive/v{{nginx_echo_version}}.tar.gz"
++
++## http_realip_module
++nginx_realip_header: "X-Forwarded-For"
++nginx_realip_addresses: ["127.0.0.1"]
++nginx_realip_real_ip_recursive: "off"
++
++# naxsi_module
++nginx_naxsi_version: 0.55.3
++nginx_naxsi_url: "https://github.com/nbs-system/naxsi/archive/{{nginx_naxsi_version}}.tar.gz"
++
++# ngx_pagespeed_module
++nginx_ngx_pagespeed_version: 1.12.34.2-stable
++nginx_ngx_pagespeed_source: "https://github.com/pagespeed/ngx_pagespeed/archive/v{{nginx_ngx_pagespeed_version}}.zip"
++nginx_ngx_pagespeed_psol_source: "https://dl.google.com/dl/page-speed/psol/{{nginx_ngx_pagespeed_version}}/stable/.tar.gz"
++
++# OpenSSL
++openssl_version: "1.1.0f"
+diff --git a/roles/nginx-build/files/mime.types b/roles/nginx-build/files/mime.types
+new file mode 100755
+index 0000000..163a157
+--- /dev/null
++++ b/roles/nginx-build/files/mime.types
+@@ -0,0 +1,74 @@
++types {
++    text/html                             html htm shtml;
++    text/css                              css;
++    text/xml                              xml;
++    image/gif                             gif;
++    image/jpeg                            jpeg jpg;
++    application/x-javascript              js;
++    application/json                      json;
++    application/atom+xml                  atom;
++    application/rss+xml                   rss;
++    text/mathml                           mml;
++    text/plain                            txt;
++    text/vnd.sun.j2me.app-descriptor      jad;
++    text/vnd.wap.wml                      wml;
++    text/x-component                      htc;
++    image/png                             png;
++    image/tiff                            tif tiff;
++    image/vnd.wap.wbmp                    wbmp;
++    image/x-icon                          ico;
++    image/x-jng                           jng;
++    image/x-ms-bmp                        bmp;
++    image/svg+xml                         svg svgz;
++    image/webp                            webp;
++    application/java-archive              jar war ear;
++    application/mac-binhex40              hqx;
++    application/msword                    doc;
++    application/pdf                       pdf;
++    application/postscript                ps eps ai;
++    application/rtf                       rtf;
++    application/vnd.ms-excel              xls;
++    application/vnd.ms-powerpoint         ppt;
++    application/vnd.wap.wmlc              wmlc;
++    application/vnd.google-earth.kml+xml  kml;
++    application/vnd.google-earth.kmz      kmz;
++    application/x-7z-compressed           7z;
++    application/x-cocoa                   cco;
++    application/x-java-archive-diff       jardiff;
++    application/x-java-jnlp-file          jnlp;
++    application/x-makeself                run;
++    application/x-perl                    pl pm;
++    application/x-pilot                   prc pdb;
++    application/x-rar-compressed          rar;
++    application/x-redhat-package-manager  rpm;
++    application/x-sea                     sea;
++    application/x-shockwave-flash         swf;
++    application/x-stuffit                 sit;
++    application/x-tcl                     tcl tk;
++    application/x-x509-ca-cert            der pem crt;
++    application/x-xpinstall               xpi;
++    application/xhtml+xml                 xhtml;
++    application/zip                       zip;
++    application/octet-stream              bin exe dll;
++    application/octet-stream              deb;
++    application/octet-stream              dmg;
++    application/octet-stream              eot;
++    application/octet-stream              iso img;
++    application/octet-stream              msi msp msm;
++    audio/midi                            mid midi kar;
++    audio/mpeg                            mp3;
++    audio/ogg                             ogg;
++    audio/x-m4a                           m4a;
++    audio/x-realaudio                     ra;
++    video/3gpp                            3gpp 3gp;
++    video/mp4                             mp4;
++    video/mpeg                            mpeg mpg;
++    video/quicktime                       mov;
++    video/webm                            webm;
++    video/x-flv                           flv;
++    video/x-m4v                           m4v;
++    video/x-mng                           mng;
++    video/x-ms-asf                        asx asf;
++    video/x-ms-wmv                        wmv;
++    video/x-msvideo                       avi;
++}
+diff --git a/roles/nginx-build/files/naxsi_core.rules b/roles/nginx-build/files/naxsi_core.rules
+new file mode 100755
+index 0000000..4c18562
+--- /dev/null
++++ b/roles/nginx-build/files/naxsi_core.rules
+@@ -0,0 +1,83 @@
++##################################
++## INTERNAL RULES IDS:1-999     ##
++##################################
++#@MainRule "msg:weird request, unable to parse" id:1;
++#@MainRule "msg:request too big, stored on disk and not parsed" id:2;
++#@MainRule "msg:invalid hex encoding, null bytes" id:10;
++#@MainRule "msg:unknown content-type" id:11;
++#@MainRule "msg:invalid formatted url" id:12;
++#@MainRule "msg:invalid POST format" id:13;
++#@MainRule "msg:invalid POST boundary" id:14;
++#@MainRule "msg:invalid JSON" id:15;
++#@MainRule "msg:empty POST" id:16;
++#@MainRule "msg:libinjection_sql" id:17;
++#@MainRule "msg:libinjection_xss" id:18;
++
++##################################
++## SQL Injections IDs:1000-1099 ##
++##################################
++MainRule "rx:select|union|update|delete|insert|table|from|ascii|hex|unhex|drop" "msg:sql keywords" "mz:BODY|URL|ARGS|$HEADERS_VAR:Cookie" "s:$SQL:4" id:1000;
++MainRule "str:\"" "msg:double quote" "mz:BODY|URL|ARGS|$HEADERS_VAR:Cookie" "s:$SQL:8,$XSS:8" id:1001;
++MainRule "str:0x" "msg:0x, possible hex encoding" "mz:BODY|URL|ARGS|$HEADERS_VAR:Cookie" "s:$SQL:2" id:1002;
++## Hardcore rules
++MainRule "str:/*" "msg:mysql comment (/*)" "mz:BODY|URL|ARGS|$HEADERS_VAR:Cookie" "s:$SQL:8" id:1003;
++MainRule "str:*/" "msg:mysql comment (*/)" "mz:BODY|URL|ARGS|$HEADERS_VAR:Cookie" "s:$SQL:8" id:1004;
++MainRule "str:|" "msg:mysql keyword (|)"  "mz:BODY|URL|ARGS|$HEADERS_VAR:Cookie" "s:$SQL:8" id:1005;
++MainRule "str:&&" "msg:mysql keyword (&&)" "mz:BODY|URL|ARGS|$HEADERS_VAR:Cookie" "s:$SQL:8" id:1006;
++## end of hardcore rules
++MainRule "str:--" "msg:mysql comment (--)" "mz:BODY|URL|ARGS|$HEADERS_VAR:Cookie" "s:$SQL:4" id:1007;
++MainRule "str:;" "msg:semicolon" "mz:BODY|URL|ARGS" "s:$SQL:4,$XSS:8" id:1008;
++MainRule "str:=" "msg:equal sign in var, probable sql/xss" "mz:ARGS|BODY" "s:$SQL:2" id:1009;
++MainRule "str:(" "msg:open parenthesis, probable sql/xss" "mz:ARGS|URL|BODY|$HEADERS_VAR:Cookie" "s:$SQL:4,$XSS:8" id:1010;
++MainRule "str:)" "msg:close parenthesis, probable sql/xss" "mz:ARGS|URL|BODY|$HEADERS_VAR:Cookie" "s:$SQL:4,$XSS:8" id:1011;
++MainRule "str:'" "msg:simple quote" "mz:ARGS|BODY|URL|$HEADERS_VAR:Cookie" "s:$SQL:4,$XSS:8" id:1013;
++MainRule "str:," "msg:comma" "mz:BODY|URL|ARGS|$HEADERS_VAR:Cookie" "s:$SQL:4" id:1015;
++MainRule "str:#" "msg:mysql comment (#)" "mz:BODY|URL|ARGS|$HEADERS_VAR:Cookie" "s:$SQL:4" id:1016;
++MainRule "str:@@" "msg:double arobase (@@)" "mz:BODY|URL|ARGS|$HEADERS_VAR:Cookie" "s:$SQL:4" id:1017;
++
++###############################
++## OBVIOUS RFI IDs:1100-1199 ##
++###############################
++MainRule "str:http://" "msg:http:// scheme" "mz:ARGS|BODY|$HEADERS_VAR:Cookie" "s:$RFI:8" id:1100;
++MainRule "str:https://" "msg:https:// scheme" "mz:ARGS|BODY|$HEADERS_VAR:Cookie" "s:$RFI:8" id:1101;
++MainRule "str:ftp://" "msg:ftp:// scheme" "mz:ARGS|BODY|$HEADERS_VAR:Cookie" "s:$RFI:8" id:1102;
++MainRule "str:php://" "msg:php:// scheme" "mz:ARGS|BODY|$HEADERS_VAR:Cookie" "s:$RFI:8" id:1103;
++MainRule "str:sftp://" "msg:sftp:// scheme" "mz:ARGS|BODY|$HEADERS_VAR:Cookie" "s:$RFI:8" id:1104;
++MainRule "str:zlib://" "msg:zlib:// scheme" "mz:ARGS|BODY|$HEADERS_VAR:Cookie" "s:$RFI:8" id:1105;
++MainRule "str:data://" "msg:data:// scheme" "mz:ARGS|BODY|$HEADERS_VAR:Cookie" "s:$RFI:8" id:1106;
++MainRule "str:glob://" "msg:glob:// scheme" "mz:ARGS|BODY|$HEADERS_VAR:Cookie" "s:$RFI:8" id:1107;
++MainRule "str:phar://" "msg:phar:// scheme" "mz:ARGS|BODY|$HEADERS_VAR:Cookie" "s:$RFI:8" id:1108;
++MainRule "str:file://" "msg:file:// scheme" "mz:ARGS|BODY|$HEADERS_VAR:Cookie" "s:$RFI:8" id:1109;
++MainRule "str:gopher://" "msg:gopher:// scheme" "mz:ARGS|BODY|$HEADERS_VAR:Cookie" "s:$RFI:8" id:1110;
++
++#######################################
++## Directory traversal IDs:1200-1299 ##
++#######################################
++MainRule "str:.." "msg:double dot" "mz:ARGS|URL|BODY|$HEADERS_VAR:Cookie" "s:$TRAVERSAL:4" id:1200;
++MainRule "str:/etc/passwd" "msg:obvious probe" "mz:ARGS|URL|BODY|$HEADERS_VAR:Cookie" "s:$TRAVERSAL:4" id:1202;
++MainRule "str:c:\\" "msg:obvious windows path" "mz:ARGS|URL|BODY|$HEADERS_VAR:Cookie" "s:$TRAVERSAL:4" id:1203;
++MainRule "str:cmd.exe" "msg:obvious probe" "mz:ARGS|URL|BODY|$HEADERS_VAR:Cookie" "s:$TRAVERSAL:4" id:1204;
++MainRule "str:\\" "msg:backslash" "mz:ARGS|URL|BODY|$HEADERS_VAR:Cookie" "s:$TRAVERSAL:4" id:1205;
++#MainRule "str:/" "msg:slash in args" "mz:ARGS|BODY|$HEADERS_VAR:Cookie" "s:$TRAVERSAL:2" id:1206;
++
++########################################
++## Cross Site Scripting IDs:1300-1399 ##
++########################################
++MainRule "str:<" "msg:html open tag" "mz:ARGS|URL|BODY|$HEADERS_VAR:Cookie" "s:$XSS:8" id:1302;
++MainRule "str:>" "msg:html close tag" "mz:ARGS|URL|BODY|$HEADERS_VAR:Cookie" "s:$XSS:8" id:1303;
++MainRule "str:[" "msg:open square backet ([), possible js" "mz:BODY|URL|ARGS|$HEADERS_VAR:Cookie" "s:$XSS:4" id:1310;
++MainRule "str:]" "msg:close square bracket (]), possible js" "mz:BODY|URL|ARGS|$HEADERS_VAR:Cookie" "s:$XSS:4" id:1311;
++MainRule "str:~" "msg:tilde (~) character" "mz:BODY|URL|ARGS|$HEADERS_VAR:Cookie" "s:$XSS:4" id:1312;
++MainRule "str:`"  "msg:grave accent (`)" "mz:ARGS|URL|BODY|$HEADERS_VAR:Cookie" "s:$XSS:8" id:1314;
++MainRule "rx:%[2|3]."  "msg:double encoding" "mz:ARGS|URL|BODY|$HEADERS_VAR:Cookie" "s:$XSS:8" id:1315;
++
++####################################
++## Evading tricks IDs: 1400-1500 ##
++####################################
++MainRule "str:&#" "msg:utf7/8 encoding" "mz:ARGS|BODY|URL|$HEADERS_VAR:Cookie" "s:$EVADE:4" id:1400;
++MainRule "str:%U" "msg:M$ encoding" "mz:ARGS|BODY|URL|$HEADERS_VAR:Cookie" "s:$EVADE:4" id:1401;
++
++#############################
++## File uploads: 1500-1600 ##
++#############################
++MainRule "rx:\.ph|\.asp|\.ht" "msg:asp/php file upload" "mz:FILE_EXT" "s:$UPLOAD:8" id:1500;
+\ No newline at end of file
+diff --git a/roles/nginx-build/handlers/main.yml b/roles/nginx-build/handlers/main.yml
+new file mode 100644
+index 0000000..db1e91c
+--- /dev/null
++++ b/roles/nginx-build/handlers/main.yml
+@@ -0,0 +1,9 @@
++
++---
++
++- name: restart_nginx
++  service:
++    name: nginx
++    enabled: yes
++    state: restarted
++  become: yes
+\ No newline at end of file
+diff --git a/roles/nginx-build/tasks/build.yml b/roles/nginx-build/tasks/build.yml
+new file mode 100644
+index 0000000..7d7476d
+--- /dev/null
++++ b/roles/nginx-build/tasks/build.yml
+@@ -0,0 +1,63 @@
++---
++- include: directories.yml
++
++- name: Nginx - Install build requirements
++  become: yes
++  apt: name={{ item }} update_cache=yes
++  with_items:
++    - build-essential
++    - zlib1g-dev
++    - libpcre3
++    - libpcre3-dev
++    - unzip
++
++- name: Nginx - Download Nginx source
++  get_url:
++    url: "{{nginx_source_url}}"
++    dest: "{{ nginx_build_tmp_dir }}/nginx-{{nginx_source_version}}.tar.gz"
++
++- include: "modules.yml"
++
++- name: Nginx - Unpack Nginx source
++  command: tar -xvzf {{ nginx_build_tmp_dir }}/nginx-{{nginx_source_version}}.tar.gz
++           chdir={{ nginx_build_tmp_dir }} creates={{ nginx_build_tmp_dir }}/nginx-{{nginx_source_version}}/README
++
++- name: Nginx - kill nginx
++  command: pkill nginx
++  ignore_errors: yes
++
++- name: Nginx - Make Nginx source (Grab lunch . . .)
++  shell: >
++    cd {{ nginx_build_tmp_dir }}/nginx-{{nginx_source_version}} &&
++    ./configure {{nginx_source_flags}} &&
++    make &&
++    sudo make install
++
++- name: Nginx - Update the sym link
++  file:
++    path: "{{ nginx_bin }}"
++    src: "{{ nginx_source_sbin_path }}"
++    state: link
++    force: yes
++
++- name: Nginx - Checkout nginx-sysvinit-script
++  git:
++    repo: https://github.com/Fleshgrinder/nginx-sysvinit-script.git
++    dest: "{{ nginx_build_tmp_dir }}/nginx-sysvinit-script"
++    update: no
++
++- name: Nginx - Write nginx.service
++  template:
++    src: nginx.service.j2
++    dest: "/lib/systemd/system/nginx.service"
++
++- name: Nginx - Create Init Scripts (LSB /etc/init.d/nginx & /etc/default/nginx)
++  command: sudo make
++  args:
++    chdir: "{{ nginx_build_tmp_dir }}/nginx-sysvinit-script"
++
++- name: Nginx - Enable Nginx service
++  service:
++    name: nginx
++    enabled: yes
++  notify: restart_nginx
+\ No newline at end of file
+diff --git a/roles/nginx-build/tasks/directories.yml b/roles/nginx-build/tasks/directories.yml
+new file mode 100755
+index 0000000..4dbdaf5
+--- /dev/null
++++ b/roles/nginx-build/tasks/directories.yml
+@@ -0,0 +1,33 @@
++# file: nginx/tasks/commons.yml
++
++- name: Nginx - Create tmp path for build
++  become: yes
++  file: state=directory
++        path={{ nginx_build_tmp_dir }}
++        owner={{ ansible_ssh_user }}
++        group={{ ansible_ssh_user }}
++
++- name: Nginx - Make sure the nginx directory exists
++  file:
++    path: "{{nginx_dir}}"
++    owner: root
++    group: root
++    mode: 0755
++    state: directory
++
++- name: Nginx - Make sure the nginx log directory exists
++  file:
++    path: "{{nginx_log_dir}}"
++    owner: root
++    group: root
++    mode: 0755
++    state: directory
++
++- name: Nginx - Make sure the sites-available, sites-enabled and conf.d directories exist
++  file:
++    path: "{{nginx_dir}}/{{item}}"
++    owner: root
++    group: root
++    mode: 0755
++    state: directory
++  with_items: ["sites-available", "sites-enabled", "conf.d"]
+diff --git a/roles/nginx-build/tasks/main.yml b/roles/nginx-build/tasks/main.yml
+new file mode 100644
+index 0000000..35521ff
+--- /dev/null
++++ b/roles/nginx-build/tasks/main.yml
+@@ -0,0 +1,10 @@
++---
++
++- name: Nginx - Setup flags compiled
++  template:
++    src: .nginx_compilation_flags.j2
++    dest: "{{ nginx_build_tmp_dir }}/.nginx_compilation_flags"
++  register: nginx_flags
++
++- include: "build.yml"
++  when: nginx_install_type == 'source' && when: nginx_flags.changed
+diff --git a/roles/nginx-build/tasks/modules.yml b/roles/nginx-build/tasks/modules.yml
+new file mode 100755
+index 0000000..da8ea3b
+--- /dev/null
++++ b/roles/nginx-build/tasks/modules.yml
+@@ -0,0 +1,35 @@
++- include: modules/http_stub_status_module.yml
++  when: nginx_modules.http_stub_status_module is defined
++
++- include: modules/http_ssl_module.yml
++  when: nginx_modules.http_ssl_module is defined
++
++- include: modules/upload_progress_module.yml
++  when: nginx_modules.upload_progress_module is defined
++
++- include: modules/headers_more_module.yml
++  when: nginx_modules.headers_more_module is defined
++
++- include: modules/http_echo_module.yml
++  when: nginx_modules.http_echo_module is defined
++
++- include: modules/google_perftools_module.yml
++  when: nginx_modules.google_perftools_module is defined
++
++- include: modules/ipv6_module.yml
++  when: nginx_modules.ipv6_module is defined
++
++- include: modules/http_realip_module.yml
++  when: nginx_modules.http_realip_module is defined
++
++- include: modules/http_spdy_module.yml
++  when: nginx_modules.http_spdy_module is defined
++
++- include: modules/naxsi_module.yml
++  when: nginx_modules.naxsi_module is defined
++
++- include: modules/ngx_pagespeed.yml
++  when: nginx_modules.ngx_pagespeed is defined
++
++- include: modules/http_geoip_module.yml
++  when: nginx_modules.http_geoip_module is defined
+diff --git a/roles/nginx-build/tasks/modules/_authorized_ips.yml b/roles/nginx-build/tasks/modules/_authorized_ips.yml
+new file mode 100755
+index 0000000..243cc7f
+--- /dev/null
++++ b/roles/nginx-build/tasks/modules/_authorized_ips.yml
+@@ -0,0 +1,7 @@
++- name: Nginx Modules - Updated the authorized_ip file
++  template:
++    src: templates/modules/authorized_ips.j2
++    dest: "{{nginx_dir}}/authorized_ips"
++    owner: root
++    group: root
++    mode: 0644
+diff --git a/roles/nginx-build/tasks/modules/google_perftools_module.yml b/roles/nginx-build/tasks/modules/google_perftools_module.yml
+new file mode 100755
+index 0000000..109232d
+--- /dev/null
++++ b/roles/nginx-build/tasks/modules/google_perftools_module.yml
+@@ -0,0 +1,6 @@
++# file: nginx-build/tasks/modules/google_perftools_module.yml
++
++- name: Nginx Modules - check libgoogle-perftools-dev package
++  apt:
++    pkg: libgoogle-perftools-dev
++    state: present
+diff --git a/roles/nginx-build/tasks/modules/headers_more_module.yml b/roles/nginx-build/tasks/modules/headers_more_module.yml
+new file mode 100755
+index 0000000..9458ba2
+--- /dev/null
++++ b/roles/nginx-build/tasks/modules/headers_more_module.yml
+@@ -0,0 +1,10 @@
++# file: nginx/tasks/modules/headers_more_module.yml
++
++- name: Nginx Modules - Download the headers_more_module source
++  get_url:
++    url: "{{nginx_headers_more_url}}"
++    dest: "{{ nginx_build_tmp_dir }}/nginx-headers-more-module-{{nginx_headers_more_version}}.tar.gz"
++
++- name: Nginx Modules - Unpack the headers_more_module source
++  command: tar -xvzf {{ nginx_build_tmp_dir }}/nginx-headers-more-module-{{nginx_headers_more_version}}.tar.gz
++    chdir={{ nginx_build_tmp_dir }} creates={{ nginx_build_tmp_dir }}/headers-more-nginx-module-{{nginx_headers_more_version}}
+diff --git a/roles/nginx-build/tasks/modules/http_auth_request_module.yml b/roles/nginx-build/tasks/modules/http_auth_request_module.yml
+new file mode 100755
+index 0000000..750e2f6
+--- /dev/null
++++ b/roles/nginx-build/tasks/modules/http_auth_request_module.yml
+@@ -0,0 +1,9 @@
++# file: nginx-build/tasks/modules/http_auth_request_module.yml
++
++#- name: Nginx Modules - Download the http_auth_request_module source
++#  get_url:
++#    url: "{{nginx_auth_request_url}}"
++#    dest: "{{ nginx_build_tmp_dir }}/nginx-auth-request-module.tar.gz"
++#
++#- name: Nginx Modules - Unpack the http_auth_request_module source
++#  command: tar -xvzf {{ nginx_build_tmp_dir }}/nginx-auth-request-module.tar.gz chdir={{ nginx_build_tmp_dir }} creates={{ nginx_build_tmp_dir }}/ngx_http_auth_request_module-{{nginx_auth_request_release}}
+diff --git a/roles/nginx-build/tasks/modules/http_echo_module.yml b/roles/nginx-build/tasks/modules/http_echo_module.yml
+new file mode 100755
+index 0000000..f07f495
+--- /dev/null
++++ b/roles/nginx-build/tasks/modules/http_echo_module.yml
+@@ -0,0 +1,9 @@
++# file: nginx-build/tasks/modules/http_echo_module.yml
++
++- name: Nginx Modules - Download the http_echo_module source
++  get_url:
++    url: "{{nginx_echo_url}}"
++    dest: "{{ nginx_build_tmp_dir }}/nginx-echo-module.tar.gz"
++
++- name: Nginx Modules - Unpack the http_echo_module source
++  command: tar -xvzf {{ nginx_build_tmp_dir }}/nginx-echo-module.tar.gz chdir={{ nginx_build_tmp_dir }} creates={{ nginx_build_tmp_dir }}/echo-nginx-module-{{nginx_echo_version}}
+diff --git a/roles/nginx-build/tasks/modules/http_geoip_module.yml b/roles/nginx-build/tasks/modules/http_geoip_module.yml
+new file mode 100755
+index 0000000..9d4dfcc
+--- /dev/null
++++ b/roles/nginx-build/tasks/modules/http_geoip_module.yml
+@@ -0,0 +1,36 @@
++# file: nginx-build/tasks/modules/http_geoip_module.yml
++
++- name: Nginx Modules - Install GeoIp lib
++  apt: pkg={{ item }} state=latest
++  with_items:
++    - libgeoip1
++    - libgeoip-dev
++  when: nginx_modules.http_geoip_module is defined
++
++- name: Nginx Modules - Create directory inside nginx
++  file: path={{nginx_dir}}/geoip state=directory
++  when: nginx_modules.http_geoip_module is defined
++
++- name: Nginx Modules - Download GeoIP database files
++  get_url: url=http://geolite.maxmind.com/download/geoip/database/GeoLiteCountry/GeoIP.dat.gz dest={{nginx_dir}}/geoip/GeoIP.dat.gz
++  when: nginx_modules.http_geoip_module is defined
++
++- name: Nginx Modules - Download GeoLiteCity database files
++  get_url: url=http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz dest={{nginx_dir}}/geoip/GeoLiteCity.dat.gz
++  when: nginx_modules.http_geoip_module is defined
++
++- name: Nginx Modules - Check if the GeoIP file exists
++  stat: path={{nginx_dir}}/geoip/GeoIP.dat
++  register: geoip_file
++
++- name: Nginx Modules - Unarchive GeoIP files
++  shell: gunzip -c {{nginx_dir}}/geoip/GeoIP.dat.gz > {{nginx_dir}}/geoip/GeoIP.dat
++  when: not geoip_file.stat.exists
++
++- name: Nginx Modules - Check if the GeoLiteCity file exists
++  stat: path={{nginx_dir}}/geoip/GeoLiteCity.dat
++  register: geolitecity_file
++
++- name: Nginx Modules - Unarchive GeoLiteCity files
++  shell: gunzip -c {{nginx_dir}}/geoip/GeoLiteCity.dat.gz > {{nginx_dir}}/geoip/GeoLiteCity.dat
++  when: not geolitecity_file.stat.exists
+diff --git a/roles/nginx-build/tasks/modules/http_gzip_static_module.yml b/roles/nginx-build/tasks/modules/http_gzip_static_module.yml
+new file mode 100755
+index 0000000..f2997cf
+--- /dev/null
++++ b/roles/nginx-build/tasks/modules/http_gzip_static_module.yml
+@@ -0,0 +1,10 @@
++# file: nginx/tasks/modules/http_gzip_static_module.yml
++# configure flag: --with-http_gzip_static_module
++
++#- name: Nginx Modules - Update the http_gzip_static_module configuration
++#  template:
++#    src: templates/modules/http_gzip_static.conf.j2
++#    dest: "{{nginx_dir}}/conf.d/http_gzip_static.conf"
++#    owner: root
++#    group: root
++#    mode: 0644
+diff --git a/roles/nginx-build/tasks/modules/http_realip_module.yml b/roles/nginx-build/tasks/modules/http_realip_module.yml
+new file mode 100755
+index 0000000..174b394
+--- /dev/null
++++ b/roles/nginx-build/tasks/modules/http_realip_module.yml
+@@ -0,0 +1,10 @@
++# file: nginx/tasks/modules/http_realip_module.yml
++# configure flag: --with-http_realip_module
++
++- name: Nginx Modules - Update the http_realip_module configuration
++  template:
++    src: templates/modules/http_realip.conf.j2
++    dest: "{{nginx_dir}}/conf.d/http_realip.conf"
++    owner: root
++    group: root
++    mode: 0644
+diff --git a/roles/nginx-build/tasks/modules/http_ssl_module.yml b/roles/nginx-build/tasks/modules/http_ssl_module.yml
+new file mode 100755
+index 0000000..62f6f37
+--- /dev/null
++++ b/roles/nginx-build/tasks/modules/http_ssl_module.yml
+@@ -0,0 +1,15 @@
++# file: nginx-build/tasks/modules/http_ssl_module.yml
++
++- name: get openssl source
++  shell: "wget https://www.openssl.org/source/openssl-{{ openssl_version }}.tar.gz"
++  args:
++    chdir: "{{ nginx_build_tmp_dir }}"
++    creates: "{{ nginx_build_tmp_dir }}/openssl-{{ openssl_version }}.tar.gz"
++  when: nginx_modules.openssl is defined
++
++- name: extract openssl source
++  command: "tar -xf {{ nginx_build_tmp_dir }}/openssl-{{ openssl_version }}.tar.gz"
++  args:
++    chdir: "{{ nginx_build_tmp_dir }}"
++    creates: "{{ nginx_build_tmp_dir }}/openssl-{{ openssl_version }}"
++  when: nginx_modules.openssl is defined
+diff --git a/roles/nginx-build/tasks/modules/http_stub_status_module.yml b/roles/nginx-build/tasks/modules/http_stub_status_module.yml
+new file mode 100755
+index 0000000..b9d38aa
+--- /dev/null
++++ b/roles/nginx-build/tasks/modules/http_stub_status_module.yml
+@@ -0,0 +1,16 @@
++- include: _authorized_ips.yml
++
++- name: Nginx Modules - Make sure the nginx status configuration is updated
++  template:
++    src: templates/modules/nginx_status.j2
++    dest: "{{nginx_dir}}/sites-available/nginx_status"
++    owner: root
++    group: root
++    mode: 0644
++
++- name: Nginx Modules - Enable the status stub sites-available
++  file:
++    path: "{{nginx_dir}}/sites-enabled/nginx_status"
++    src: "{{nginx_dir}}/sites-available/nginx_status"
++    state: link
++    force: yes
+diff --git a/roles/nginx-build/tasks/modules/ipv6_module.yml b/roles/nginx-build/tasks/modules/ipv6_module.yml
+new file mode 100755
+index 0000000..23d6b6e
+--- /dev/null
++++ b/roles/nginx-build/tasks/modules/ipv6_module.yml
+@@ -0,0 +1,4 @@
++# file: roles/nginx/tasks/modules/ipv6_module.yml
++# configure flag: --with-ipv6
++
++# no contents
+diff --git a/roles/nginx-build/tasks/modules/naxsi_module.yml b/roles/nginx-build/tasks/modules/naxsi_module.yml
+new file mode 100755
+index 0000000..61e3aff
+--- /dev/null
++++ b/roles/nginx-build/tasks/modules/naxsi_module.yml
+@@ -0,0 +1,17 @@
++# file: nginx-build/tasks/modules/naxsi_module.yml
++
++- name: Nginx Modules - Download the naxsi_module source
++  get_url:
++    url: "{{nginx_naxsi_url}}"
++    dest: "{{ nginx_build_tmp_dir }}/nginx-naxsi-module.tar.gz"
++
++- name: Nginx Modules - Unpack the naxsi_module source
++  command: tar -xvzf {{ nginx_build_tmp_dir }}/nginx-naxsi-module.tar.gz chdir={{ nginx_build_tmp_dir }} creates={{ nginx_build_tmp_dir }}/naxsi-{{nginx_naxsi_version}}
++
++- name: Nginx Modules - Make sure the naxsi_module configuration is up to date
++  copy:
++    src: files/naxsi_core.rules
++    dest: "{{nginx_dir}}/naxsi_core.rules"
++    owner: root
++    group: root
++    mode: 0644
+diff --git a/roles/nginx-build/tasks/modules/ngx_pagespeed.yml b/roles/nginx-build/tasks/modules/ngx_pagespeed.yml
+new file mode 100755
+index 0000000..9deb7d7
+--- /dev/null
++++ b/roles/nginx-build/tasks/modules/ngx_pagespeed.yml
+@@ -0,0 +1,43 @@
++# file: nginx-build/tasks/modules/ngx_pagespeed.yml
++
++- name: Nginx Modules - pagespeed - Download the ngx_pagespeed source
++  get_url: url={{ nginx_ngx_pagespeed_source }}
++                 dest={{ nginx_build_tmp_dir }}
++                 mode=0440
++  register: nginx_pagespeed_module_dl
++
++- name: Nginx Modules - pagespeed - unpack nginx pagespeed module
++  unarchive:  copy=no
++              dest={{ nginx_build_tmp_dir }}/
++              src={{ nginx_pagespeed_module_dl.dest }}
++  when: nginx_pagespeed_module_dl.changed
++  register: nginx_pagespeed_module_unpack
++
++
++- name: Get URL |||||||||||
++  shell: |
++    psol_url={{ nginx_ngx_pagespeed_psol_source }}
++    [ -e scripts/format_binary_url.sh ] && psol_url=$(scripts/format_binary_url.sh PSOL_BINARY_URL)
++    wget ${psol_url}
++    tar -xzvf $(basename ${psol_url})
++  args:
++    chdir: "{{ nginx_build_tmp_dir }}/ngx_pagespeed-{{ nginx_ngx_pagespeed_version }}"
++  register: output
++
++- name: Display all variables
++  debug:
++    var: output
++    verbosity: 4
++#
++#- name: Nginx Modules - pagespeed - download pagespeed library
++#  get_url: url={{ nginx_ngx_pagespeed_psol_source }}
++#            dest={{ nginx_build_tmp_dir }}
++#  when: not nginx_psol.stat.exists
++#  register: nginx_psol_dl
++#
++#- name: unpack pagespeed library
++#  unarchive: copy=no
++#            dest={{ nginx_build_tmp_dir }}/ngx_pagespeed-{{ nginx_pagespeed_version }}-stable/
++#            src={{ nginx_psol_dl.dest }}
++#  when: nginx_psol_dl.changed
++#  register: nginx_psol_unpack
+\ No newline at end of file
+diff --git a/roles/nginx-build/tasks/modules/upload_progress_module.yml b/roles/nginx-build/tasks/modules/upload_progress_module.yml
+new file mode 100755
+index 0000000..b00a19e
+--- /dev/null
++++ b/roles/nginx-build/tasks/modules/upload_progress_module.yml
+@@ -0,0 +1,19 @@
++# file: nginx-build/tasks/modules/upload_progress_module.yml
++
++# to be completed...
++
++- name: Nginx Modules - Download the upload_progress_module source
++  get_url:
++    url: "{{nginx_upload_progress_url}}"
++    dest: "{{ nginx_build_tmp_dir }}/nginx-upload-progress-module-{{nginx_upload_progress_version}}.tar.gz"
++
++- name: Nginx Modules - Unpack the upload_progress_module source
++  command: tar -xvzf {{ nginx_build_tmp_dir }}/nginx-upload-progress-module-{{nginx_upload_progress_version}}.tar.gz chdir={{ nginx_build_tmp_dir }} creates={{ nginx_build_tmp_dir }}/nginx-upload-progress-module-{{nginx_upload_progress_version}}
++
++- name: Nginx Modules - Make sure the upload_progress_module configuration is updated
++  template:
++    src: templates/modules/upload_progress.j2
++    dest: "{{nginx_dir}}/sites-available/upload_progress"
++    owner: root
++    group: root
++    mode: 0644
+diff --git a/roles/nginx-build/templates/.nginx_compilation_flags.j2 b/roles/nginx-build/templates/.nginx_compilation_flags.j2
+new file mode 100755
+index 0000000..5b7783a
+--- /dev/null
++++ b/roles/nginx-build/templates/.nginx_compilation_flags.j2
+@@ -0,0 +1,3 @@
++# This file is used to track the nginx build flags, DO NOT CHANGE MANUALLY
++{{nginx_source_version}}
++{{nginx_source_flags}}
+diff --git a/roles/nginx-build/templates/modules/authorized_ips.j2 b/roles/nginx-build/templates/modules/authorized_ips.j2
+new file mode 100755
+index 0000000..b40e4b6
+--- /dev/null
++++ b/roles/nginx-build/templates/modules/authorized_ips.j2
+@@ -0,0 +1,6 @@
++geo ${{nginx_remote_ip_var}} $authorized_ip {
++  default no;
++{% for ip in nginx_authorized_ips %}
++  {{ip}} yes;
++{% endfor %}
++}
+diff --git a/roles/nginx-build/templates/modules/http_gzip_static.conf.j2 b/roles/nginx-build/templates/modules/http_gzip_static.conf.j2
+new file mode 100755
+index 0000000..53993ed
+--- /dev/null
++++ b/roles/nginx-build/templates/modules/http_gzip_static.conf.j2
+@@ -0,0 +1 @@
++gzip_static {{nginx_gzip_static}};
+diff --git a/roles/nginx-build/templates/modules/http_realip.conf.j2 b/roles/nginx-build/templates/modules/http_realip.conf.j2
+new file mode 100755
+index 0000000..5843c5e
+--- /dev/null
++++ b/roles/nginx-build/templates/modules/http_realip.conf.j2
+@@ -0,0 +1,5 @@
++{% for address in nginx_realip_addresses %}
++set_real_ip_from {{address}};
++{% endfor %}
++real_ip_header {{nginx_realip_header}};
++real_ip_recursive {{nginx_realip_real_ip_recursive}};
+diff --git a/roles/nginx-build/templates/modules/nginx_status.j2 b/roles/nginx-build/templates/modules/nginx_status.j2
+new file mode 100755
+index 0000000..569d964
+--- /dev/null
++++ b/roles/nginx-build/templates/modules/nginx_status.j2
+@@ -0,0 +1,14 @@
++include authorized_ips;
++
++server {
++  listen 8090;
++  server_name _;
++
++  location /nginx_status {
++    if ($authorized_ip = no) {
++      return 404;
++    }
++    stub_status on;
++    access_log off;
++  }
++}
+diff --git a/roles/nginx-build/templates/modules/upload_progress.j2 b/roles/nginx-build/templates/modules/upload_progress.j2
+new file mode 100755
+index 0000000..dd11bef
+--- /dev/null
++++ b/roles/nginx-build/templates/modules/upload_progress.j2
+@@ -0,0 +1,4 @@
++upload_progress {{nginx_upload_progress_zone_name}} {{nginx_upload_progress_zone_size}};
++{% if nginx_upload_progress_javascript_output %}
++upload_progress_java_output;
++{% endif %}
+diff --git a/roles/nginx-build/templates/nginx.service.j2 b/roles/nginx-build/templates/nginx.service.j2
+new file mode 100644
+index 0000000..151dc3b
+--- /dev/null
++++ b/roles/nginx-build/templates/nginx.service.j2
+@@ -0,0 +1,15 @@
++[Unit]
++Description=The NGINX HTTP and reverse proxy server
++After=syslog.target network.target remote-fs.target nss-lookup.target
++
++[Service]
++Type=forking
++PIDFile={{ nginx_pid }}
++ExecStartPre={{ nginx_bin }} -t
++ExecStart={{ nginx_bin }}
++ExecReload=/bin/kill -s HUP $MAINPID
++ExecStop=/bin/kill -s QUIT $MAINPID
++PrivateTmp=true
++
++[Install]
++WantedBy=multi-user.target
+\ No newline at end of file
+diff --git a/roles/nginx/tasks/main.yml b/roles/nginx/tasks/main.yml
+index f9d6cdb..10ac925 100644
+--- a/roles/nginx/tasks/main.yml
++++ b/roles/nginx/tasks/main.yml
+@@ -1,14 +1,16 @@
+ ---
+ - name: Add Nginx PPA
+   apt_repository:
+-    repo: "{{ nginx_ppa }}"
++    repo: "ppa:nginx/development"
+     update_cache: yes
++  when: nginx_install_type == 'package'
+ 
+ - name: Install Nginx
+   apt:
+-    name: "{{ nginx_package }}"
++    name: nginx
+     state: present
+-    force: yes
++    #force: yes
++  when: nginx_install_type == 'package'
+ 
+ - name: Create SSL directory
+   file:
+diff --git a/server.yml b/server.yml
+index 8a67461..c90325a 100644
+--- a/server.yml
++++ b/server.yml
+@@ -34,6 +34,8 @@
+     - { role: ssmtp, tags: [ssmtp, mail] }
+     - { role: php, tags: [php] }
+     - { role: memcached, tags: [memcached] }
++    # nginx build
++    - { role: nginx-build, tags: [nginx], when: nginx_install_type == 'source' }
+     - { role: nginx, tags: [nginx] }
+     - { role: logrotate, tags: [logrotate] }
+     - { role: composer, tags: [composer] }
