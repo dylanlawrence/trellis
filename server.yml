@@ -34,6 +34,8 @@
     - { role: ssmtp, tags: [ssmtp, mail] }
     - { role: php, tags: [php] }
     - { role: memcached, tags: [memcached] }
+    # nginx build
+    - { role: nginx-build, tags: [nginx], when: nginx_install_type == 'source' }
     - { role: nginx, tags: [nginx] }
     - { role: logrotate, tags: [logrotate] }
     - { role: composer, tags: [composer] }

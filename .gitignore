@@ -3,3 +3,14 @@
 vendor/roles
 *.py[co]
 *.retry
+
+
+# IntelliJ project files
+.idea
+*.iml
+out
+gen
+
+# Folder view configuration files
+.DS_Store
+Desktop.ini

@@ -1,0 +1,3 @@
+---
+- include: "build.yml"
+  when: nginx_install_type == 'source'
